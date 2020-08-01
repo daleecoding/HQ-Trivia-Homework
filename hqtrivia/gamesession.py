@@ -1,28 +1,39 @@
-
-class RoundResult:
-
-    def __init__(self, winner: Player, question: Question, count_per_choice: List[int]):
-        self.winner = winner
-        self.question = question
-        self.count_per_choice = count_per_choice
+import websockets
+from .gamemanager import Player
 
 
 class GameSession:
+    """
+    Represents a single game consisting of multiple players.
+    The game will continue until everyone is eliminated or only
+    1 player is left.
 
-    def __init__(self, game_id: str, players: List[Player]):
+    """
+
+    ROUND_DURATION = 10
+
+    def __init__(self, game_id: int, players: List[Player]):
         self.game_id = id
         self.players = players
         self.current_round = 0
-        self.current_question = None
 
-    def on_round_started_get_question(self) -> Question:
-        pass
+    async def execute_next_round(self) -> bool:
+        """
+        Returns false if game is over.
+        """
 
-    def on_player_submit_answer(self, player_id: str, answer: str):
-        pass
+        # Generate the question for this round
+        question = QuestionGenerator.generate()
 
-    def on_round_ended_get_result(self) -> RoundResult:
-        pass
+        self.current_round += 1
 
-    def on_player_leave_game(self, player_id: str):
-        pass
+        # Set the round ending time after getting the question in case
+        # question generation was slow.
+
+        # TODO: Breakdown the below tasks into separate functions for unit testing
+
+        # TODO: Broadcast questions to the players and wait for the answers
+
+        # TODO: Share the results to the players
+
+        # TODO: Eliminate the players
