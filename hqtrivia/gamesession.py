@@ -1,5 +1,43 @@
+import asyncio
+from collections import Counter
+import logging
+from typing import List
 import websockets
-from .gamemanager import Player
+
+from .messages import *
+from .question import Question
+
+
+class Player:
+    """
+    This represents a handle to a single remote player.
+
+    The purpose of this class is to wrap the websocket calls so that the
+    GameSession class can have a bi-directional communication without
+    worrying about the protocol nor the low-level communication errors.
+
+    Future object is used to signal that game is complete for the user.
+    """
+
+    def __init__(self, future: asyncio.Future, websocket: websockets.WebSocketServerProtocol):
+        self.future = future
+        self.websocket = websocket
+
+    async def sendMessage(self, message: str):
+        await self.websocket.send(message)
+        # TypeError can be raised but that would be a bug on our part in
+        # trying to send different types of data, and we want that to
+        # propagate to the user
+
+    async def recvMessage(self) -> str:
+        try:
+            return await self.websocket.recv()
+        except ConnectionClosed as e:
+            logging.warning(
+                "Connection closed while waiting for recv(): %s", e)
+            return None
+        # RuntimeError can be raised if two coroutines call recv() concurrently.
+        # That would be a bug and we want that to propagate to the user.
 
 
 class GameSession:
@@ -17,23 +55,137 @@ class GameSession:
         self.players = players
         self.current_round = 0
 
+    async def run(self):
+        try:
+            # Continue going to the next round as long as there's a player not eliminated yet
+            while(await self.execute_next_round()):
+                pass
+        except:
+            logging.error(TEMPLATE_GAME_SESSION_ERROR.substitute(
+                gameid=self.game_id), exc_info=True)
+            await self.abort_game()
+            raise
+
+    async def abort_game(self):
+        """
+        Aborts the game if an unrecoverable error is encountered
+        """
+        await asyncio.gather(
+            (player.sendMessage(MESSAGE_NETWORK_ERROR_OCCURRED)
+             for player in self.players)
+        )
+
+        await self.handle_eliminated_players(self.players)
+        self.players.clear()
+
     async def execute_next_round(self) -> bool:
         """
         Returns false if game is over.
         """
 
-        # Generate the question for this round
-        question = QuestionGenerator.generate()
-
         self.current_round += 1
 
-        # Set the round ending time after getting the question in case
-        # question generation was slow.
+        # Generate the question for this round
+        question = await Question.generate()
 
-        # TODO: Breakdown the below tasks into separate functions for unit testing
+        # Start the duration for receiving now so that question
+        # generation time is not taken into the timeout for the
+        # user to answer the question.
 
-        # TODO: Broadcast questions to the players and wait for the answers
+        # Broadcast questions to the players and wait for the answers
+        answers = await self.broadcast_question_and_wait_for_answers(question)
 
-        # TODO: Share the results to the players
+        # Broadcast the result to the players
+        eliminated_players = await self.broadcast_results_and_eliminate_players(question, answers)
 
-        # TODO: Eliminate the players
+        # Eliminate players with wrong answers
+        await self.handle_eliminated_players(eliminated_players)
+
+        # If only 1 remaining, notify the winner.
+        # Return true if game should continue
+        return self.notify_winner_if_one_remaining()
+
+    async def broadcast_question_and_wait_for_answers(self, question: Question) -> List[str]:
+        # TODO: Take answer out before sending to the player
+        return await asyncio.gather(
+            (self.send_question_and_get_answer(
+                question, player) for player in self.players)
+        )
+
+    async def send_question_and_get_answer(self, question: Question, player: Player) -> str:
+        try:
+            await player.sendMessage(question)
+            return await asyncio.wait_for(player.recvMessage(), timeout=ROUND_DURATION)
+
+        except asyncio.TimeoutError as e:
+            # Expected to occur if player doesn't answer in time
+            pass
+
+        except:
+            logging.error(
+                "Error occurred while sending and receiving answer", exc_info=True)
+
+        return None
+
+    async def broadcast_results(self, allplayers: List[Player], survivors: List[Player], eliminated: List[Player], choice_counts: List[int]):
+        # Broadcast the statistics on how many players have chosen each answer.
+        await asyncio.gather(
+            [asyncio.create_task(player.sendMessage(choice_counts[i]))
+             for player in allplayers]
+        )
+
+        # Broadcast whether each player has survived or been eliminated from the game.
+        await asyncio.gather(
+            [asyncio.create_task(player.sendMessage(
+                "Correct! You are moving to the next round!")) for player in survivors].extend(
+
+                [asyncio.create_task(player.sendMessage(
+                    "Incorrect. You have been eliminated from the game!")) for player in eliminated]
+            )
+        )
+
+    async def broadcast_results_and_eliminate_players(self, question: Question, answers: List[str]) -> List[Player]:
+        counter = Counter()
+        eliminated = []
+        survivors = []
+
+        for i in range(0, len(self.players)):
+            if (question.answer == answers[i]):
+                # More efficient to construct new players than deleting from array list each time.
+                survivors.append(self.players[i])
+            else:
+                eliminated.append(self.players[i])
+
+            # Gather the number of players who chose this answer
+            counter[answers[i]] += 1
+
+        choice_counts = [0] * len(question.choices)
+
+        for i in range(0, len(question.choices)):
+            choice_counts[i] = counter[question.choices[i]]
+
+        # Send the results to the players
+        self.broadcast_results(self.players, survivors,
+                               eliminated, choice_counts)
+
+        # Update the new players list to only the survivors
+        self.players = survivors
+
+        return eliminated
+
+    def handle_eliminated_players(self, players: List[Player]):
+        # Set the result so that the websocket handling can finish.
+        for player in self.players:
+            player.future.set_result(None)
+
+    async def notify_winner_if_one_remaining(self):
+        # Check if there's a winner
+        if (len(self.players) == 1):
+            await player.sendMessage("Congratulations, you are the winner!")
+
+            # Notify that this player is done with the game
+            self.players[0].future.set_result(None)
+            del self.players[0]
+
+        # Game will continue if there are still participants left
+        return len(self.players) != 0

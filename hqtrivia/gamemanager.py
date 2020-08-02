@@ -1,37 +1,12 @@
 import asyncio
 import logging
-
 from .gamesession import GameSession
+from .gamesession import Player
 from .websocketserver import WebsocketServer
+from .websocketserver import WebsocketCallbackInterface
 
 
-class Player:
-    """
-    This represents a handle to a single remote player.
-
-    The purpose of this class is to wrap the websocket calls so that the
-    GameSession class can have a bi-directional communication without
-    worrying about the protocol nor the low-level communication errors.
-    """
-
-    def __init__(self, websocket: websockets.protocol.websocket):
-        self.websocket = websocket
-
-    async def sendMessage(self, message: str):
-        try:
-            await self.websocket.send(message)
-        except:
-            logging.warning("sendMessage failed %s", sys.exc_info()[0])
-
-    async def recvMessage(self) -> str:
-        try:
-            return await self.websocket.recv()
-        except:
-            logging.warning("recvMessage failed %s", sys.exc_info()[0])
-            return None
-
-
-class GameManager:
+class GameManager(WebsocketCallbackInterface):
     """
     Runs and manages the overall HQ Trivia game.
 
@@ -45,6 +20,7 @@ class GameManager:
         # Players waiting for the game to start after quorum is reached
         self.waiting_players = []
         self.next_game_id = 1
+        self.game_task_queue = asyncio.Queue()
 
     async def main(self):
         # TODO: Make the port configurable
@@ -54,32 +30,35 @@ class GameManager:
         await asyncio.create_task(wsserver.start())
 
     async def run(self):
-        # TODO: I may not need this coroutine if I can do all house
-        # keeping through the handle_new_websocket.
-        pass
+        # Ensure that all game.run() tasks get tracked until they finish.
+        while (True):
+            task = await game_task_queue.get()
+            # Eat up the exception if game.run() threw an exception
+            await asyncio.gather(task, return_exceptions=False)
 
     async def handle_new_websocket(self, websocket: websockets.WebSocketServerProtocol):
-        # TODO: Break down into small functions for unit testing
+        new_player = Player(
+            asyncio.get_running_loop().create_future(), websocket)
 
-        new_player = Player(websocket)
+        await self.wait_until_game_complete(new_player)
 
-        waiting_players.append(new_player)
+    async def wait_until_game_complete(self, player: Player):
+        # Create future to await on and queue onto the waiting list
+        waiting_players.append(player)
 
+        # If there is a quorum, create a new game and schedule it as a task
         if (len(waiting_players) >= PLAYERS_PER_GAME):
-            # Got a quorum. Create a new game with all the players who has been waiting
             game = GameSession(next_game_id, waiting_players)
-            waiting_players.clear()
-
-            # Increment next game id to use by 1 for uniqueness
             next_game_id += 1
 
-            # Keep going to the next round until the game is over
-            while (await game.execute_next_round()):
-                pass
-        else:
-            # TODO: Handle players waiting for other players to join
-            # Need to use future to notify the waiting players
-            pass
+            waiting_players.clear()
+
+            # Start the game.run() task and ensure task is kept track until
+            # it finishes.
+            game_task_queue.append(asyncio.create_task(game.run()))
+
+        # Wait until the game is complete for this player
+        await player.future
 
 
 if __name__ == '__main__':
