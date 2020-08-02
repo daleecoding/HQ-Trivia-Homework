@@ -1,5 +1,6 @@
 import asyncio
 from collections import Counter
+import json
 import logging
 from typing import List
 import websockets
@@ -71,8 +72,8 @@ class GameSession:
         Aborts the game if an unrecoverable error is encountered
         """
         await asyncio.gather(
-            (player.sendMessage(MESSAGE_NETWORK_ERROR_OCCURRED)
-             for player in self.players)
+            *[player.sendMessage(MESSAGE_NETWORK_ERROR_OCCURRED)
+              for player in self.players]
         )
 
         await self.handle_eliminated_players(self.players)
@@ -99,23 +100,24 @@ class GameSession:
         eliminated_players = await self.broadcast_results_and_eliminate_players(question, answers)
 
         # Eliminate players with wrong answers
-        await self.handle_eliminated_players(eliminated_players)
+        self.handle_eliminated_players(eliminated_players)
 
         # If only 1 remaining, notify the winner.
         # Return true if game should continue
-        return self.notify_winner_if_one_remaining()
+        return await self.notify_winner_if_one_remaining()
 
     async def broadcast_question_and_wait_for_answers(self, question: Question) -> List[str]:
-        # TODO: Take answer out before sending to the player
+        json_text = question.get_json_without_answer()
+
         return await asyncio.gather(
-            (self.send_question_and_get_answer(
-                question, player) for player in self.players)
+            *[self.send_question_and_get_answer(
+                json_text, player) for player in self.players]
         )
 
-    async def send_question_and_get_answer(self, question: Question, player: Player) -> str:
+    async def send_question_and_get_answer(self, question_json: str, player: Player) -> str:
         try:
-            await player.sendMessage(question)
-            return await asyncio.wait_for(player.recvMessage(), timeout=ROUND_DURATION)
+            await player.sendMessage(question_json)
+            return await asyncio.wait_for(player.recvMessage(), timeout=GameSession.ROUND_DURATION)
 
         except asyncio.TimeoutError as e:
             # Expected to occur if player doesn't answer in time
@@ -128,21 +130,20 @@ class GameSession:
         return None
 
     async def broadcast_results(self, allplayers: List[Player], survivors: List[Player], eliminated: List[Player], choice_counts: List[int]):
+        json_text = json.dumps(choice_counts)
+
         # Broadcast the statistics on how many players have chosen each answer.
         await asyncio.gather(
-            [asyncio.create_task(player.sendMessage(choice_counts[i]))
-             for player in allplayers]
+            *[player.sendMessage(json_text) for player in allplayers]
         )
 
         # Broadcast whether each player has survived or been eliminated from the game.
-        await asyncio.gather(
-            [asyncio.create_task(player.sendMessage(
-                "Correct! You are moving to the next round!")) for player in survivors].extend(
+        coroutines = [player.sendMessage(
+            MESSAGE_CORRECT_MOVING_TO_NEXT_ROUND) for player in survivors]
+        coroutines.extend([player.sendMessage(
+            MESSAGE_YOU_ARE_ELIMINATED) for player in eliminated])
 
-                [asyncio.create_task(player.sendMessage(
-                    "Incorrect. You have been eliminated from the game!")) for player in eliminated]
-            )
-        )
+        await asyncio.gather(*coroutines)
 
     async def broadcast_results_and_eliminate_players(self, question: Question, answers: List[str]) -> List[Player]:
         counter = Counter()
@@ -165,8 +166,8 @@ class GameSession:
             choice_counts[i] = counter[question.choices[i]]
 
         # Send the results to the players
-        self.broadcast_results(self.players, survivors,
-                               eliminated, choice_counts)
+        await self.broadcast_results(self.players, survivors,
+                                     eliminated, choice_counts)
 
         # Update the new players list to only the survivors
         self.players = survivors
@@ -175,13 +176,13 @@ class GameSession:
 
     def handle_eliminated_players(self, players: List[Player]):
         # Set the result so that the websocket handling can finish.
-        for player in self.players:
+        for player in players:
             player.future.set_result(None)
 
     async def notify_winner_if_one_remaining(self):
         # Check if there's a winner
         if (len(self.players) == 1):
-            await player.sendMessage("Congratulations, you are the winner!")
+            await self.players[0].sendMessage(MESSAGE_YOU_ARE_THE_WINNER)
 
             # Notify that this player is done with the game
             self.players[0].future.set_result(None)

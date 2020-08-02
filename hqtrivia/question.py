@@ -18,6 +18,11 @@ class Question:
         self.choices = choices
         self.answer = answer
 
+    def get_json_without_answer(self) -> str:
+        my_dict = self.__dict__.copy()
+        del my_dict['answer']
+        return json.dumps(my_dict)
+
     @staticmethod
     async def generate() -> 'Question':
         async with ClientSession() as session:
