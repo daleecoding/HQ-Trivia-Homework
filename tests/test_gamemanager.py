@@ -10,7 +10,3 @@ class GameManagerTest(unittest.Testcase):
     def test_sanity(self):
         game_manager = GameManager()
         self.assertFalse(False, "Not Implemented")
-
-
-if __name__ == '__main__':
-    unittest.main()

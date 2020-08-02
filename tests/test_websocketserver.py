@@ -10,7 +10,3 @@ class WebsocketServerTest(unittest.Testcase):
     def test_sanity(self):
         game = WebsocketServer(9999, None)
         self.assertFalse(False, "Not Implemented")
-
-
-if __name__ == '__main__':
-    unittest.main()
