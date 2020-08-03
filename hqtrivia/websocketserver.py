@@ -57,7 +57,7 @@ class WebsocketServer:
             The wss request URI that created the websocket connection
         """
         try:
-            await callback.handle_new_websocket(client)
+            await self.callback.handle_new_websocket(websocket)
 
         except Exception as e:
             logging.error("Exception occurred", exc_info=True)
@@ -67,6 +67,5 @@ class WebsocketServer:
 
     async def start(self):
         # Do not specify the host so that I'm not bound to a specific NIC
-        start_server = websockets.serve(
+        await websockets.serve(
             self.ws_handler_impl, port=self.port)
-        await start_server

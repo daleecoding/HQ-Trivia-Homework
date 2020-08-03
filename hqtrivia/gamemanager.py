@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import websockets
+
 from .gamesession import GameSession
 from .gamesession import Player
 from .websocketserver import WebsocketServer
@@ -14,27 +16,17 @@ class GameManager(WebsocketCallbackInterface):
     """
 
     PLAYERS_PER_GAME = 2
-    WS_SERVER_PORT
+    WS_SERVER_PORT = 9999
 
     def __init__(self):
         # Players waiting for the game to start after quorum is reached
         self.waiting_players = []
         self.next_game_id = 1
-        self.game_task_queue = asyncio.Queue()
+        # TODO: Make the port configurable
+        self.wsserver = WebsocketServer(GameManager.WS_SERVER_PORT, self)
 
     async def main(self):
-        # TODO: Make the port configurable
-        wsserver = WebsocketServer(WS_SERVER_PORT, self)
-
-        await asyncio.create_task(self.run())
-        await asyncio.create_task(wsserver.start())
-
-    async def run(self):
-        # Ensure that all game.run() tasks get tracked until they finish.
-        while (True):
-            task = await game_task_queue.get()
-            # Eat up the exception if game.run() threw an exception
-            await asyncio.gather(task, return_exceptions=False)
+        await self.wsserver.start()
 
     async def handle_new_websocket(self, websocket: websockets.WebSocketServerProtocol):
         new_player = Player(
@@ -44,18 +36,17 @@ class GameManager(WebsocketCallbackInterface):
 
     async def wait_until_game_complete(self, player: Player):
         # Create future to await on and queue onto the waiting list
-        waiting_players.append(player)
+        self.waiting_players.append(player)
 
         # If there is a quorum, create a new game and schedule it as a task
-        if (len(waiting_players) >= PLAYERS_PER_GAME):
-            game = GameSession(next_game_id, waiting_players)
-            next_game_id += 1
+        if (len(self.waiting_players) >= GameManager.PLAYERS_PER_GAME):
+            game = GameSession(self.next_game_id, self.waiting_players)
+            self.next_game_id += 1
 
-            waiting_players.clear()
+            self.waiting_players.clear()
 
-            # Start the game.run() task and ensure task is kept track until
-            # it finishes.
-            game_task_queue.append(asyncio.create_task(game.run()))
+            # Use the last player's context to run the game.
+            await game.run()
 
         # Wait until the game is complete for this player
         await player.future
