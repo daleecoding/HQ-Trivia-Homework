@@ -57,15 +57,22 @@ class WebsocketServer:
             The wss request URI that created the websocket connection
         """
         try:
+            logging.info(
+                f"New websocket connection: [to={path} from={websocket.remote_address}]")
             await self.callback.handle_new_websocket(websocket)
 
         except Exception as e:
             logging.error("Exception occurred", exc_info=True)
 
+        finally:
+            logging.info(
+                f"Closing websocket connection: [to={path} from={websocket.remote_address}]")
+
         # websocket library will ensure that the websockets gets closed,
         # and I do not have to close it here.
 
-    async def start(self):
+    def start(self):
+        # This is actually returning a coroutine that can be run via asyncio
         # Do not specify the host so that I'm not bound to a specific NIC
-        await websockets.serve(
+        return websockets.serve(
             self.ws_handler_impl, port=self.port)

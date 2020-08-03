@@ -60,7 +60,7 @@ class GameSessionTest(unittest.TestCase):
         player.attach_mock(sendMessage, 'sendMessage')
 
         game = GameSession(0, [player])
-        game.handle_eliminated_players = AsyncMock()
+        game.handle_eliminated_players = MagicMock()
 
         asyncio.run(game.abort_game())
 

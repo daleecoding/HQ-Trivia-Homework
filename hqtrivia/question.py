@@ -62,7 +62,6 @@ def opentdb_json_to_question(json_text: str) -> Question:
     random_index = random.randint(0, len(incorrect_choices))
 
     choices = incorrect_choices.copy()
-    choices.append(answer)
-    choices.extend(incorrect_choices[random_index:])
+    choices.insert(random_index, answer)
 
     return Question(result['question'], choices, answer)

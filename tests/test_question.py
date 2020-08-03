@@ -23,6 +23,10 @@ class QuestionTest(unittest.TestCase):
 
         self.assertGreater(len(question.choices), 1,
                            "Choices returned must be greater than 1")
+
+        self.assertEqual(len(question.choices), len(
+            set(question.choices)), "Choices returned are not unique")
+
         self.assertIsNotNone(
             question.answer, "Answer returned must not be None")
 

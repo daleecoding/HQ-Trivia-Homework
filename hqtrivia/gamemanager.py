@@ -25,8 +25,11 @@ class GameManager(WebsocketCallbackInterface):
         # TODO: Make the port configurable
         self.wsserver = WebsocketServer(GameManager.WS_SERVER_PORT, self)
 
-    async def main(self):
-        await self.wsserver.start()
+    def main(self):
+        # Start websocket server and wait forever
+        event_loop = asyncio.get_event_loop()
+        event_loop.run_until_complete(self.wsserver.start())
+        event_loop.run_forever()
 
     async def handle_new_websocket(self, websocket: websockets.WebSocketServerProtocol):
         new_player = Player(
@@ -47,6 +50,9 @@ class GameManager(WebsocketCallbackInterface):
 
             # Use the last player's context to run the game.
             await game.run()
+        else:
+            logging.info(
+                f"Waiting for more players: [players={len(self.waiting_players)} min_required={GameManager.PLAYERS_PER_GAME}]")
 
         # Wait until the game is complete for this player
         await player.future
@@ -54,8 +60,12 @@ class GameManager(WebsocketCallbackInterface):
 
 if __name__ == '__main__':
     # TODO: Make the logging level configurable
-    logging.basicConfig(format='%(asctime)s %(message)s',
-                        level=logging.WARNING)
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
+                        level=logging.INFO)
 
-    gm = GameManager()
-    asyncio.run(gm.main())
+    try:
+        gm = GameManager()
+        gm.main()
+    except KeyboardInterrupt:
+        # User requested abort
+        logging.warning("Received keyboard interrupt. Exiting")

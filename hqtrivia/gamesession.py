@@ -26,7 +26,11 @@ class Player:
         self.websocket = websocket
 
     async def sendMessage(self, message: str):
-        await self.websocket.send(message)
+        try:
+            await self.websocket.send(message)
+        except ConnectionClosed as e:
+            logging.warning(
+                "Connection closed while trying to send(): %s", e)
         # TypeError can be raised but that would be a bug on our part in
         # trying to send different types of data, and we want that to
         # propagate to the user
@@ -41,6 +45,12 @@ class Player:
         # RuntimeError can be raised if two coroutines call recv() concurrently.
         # That would be a bug and we want that to propagate to the user.
 
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        return f"Player: [remote={self.websocket.remote_address if not None else None}]"
+
 
 class GameSession:
     """
@@ -53,11 +63,14 @@ class GameSession:
     ROUND_DURATION = 10
 
     def __init__(self, game_id: int, players: List[Player]):
-        self.game_id = id
-        self.players = players
+        self.game_id = game_id
+        self.players = players.copy()
         self.current_round = 0
 
     async def run(self):
+        logging.info(
+            f"Game has started: [game_id={self.game_id}, players={str(self.players)}]")
+
         try:
             # Continue going to the next round as long as there's a player not eliminated yet
             while(await self.execute_next_round()):
@@ -84,8 +97,10 @@ class GameSession:
         """
         Returns false if game is over.
         """
-
         self.current_round += 1
+
+        logging.info(
+            f"Executing round: [game_id={self.game_id} round={self.current_round}]")
 
         # Generate the question for this round
         question = await Question.generate()
@@ -110,6 +125,9 @@ class GameSession:
     async def broadcast_question_and_wait_for_answers(self, question: Question) -> List[str]:
         json_text = question.get_json_without_answer()
 
+        logging.info(
+            f"Sending questions players: [game_id={self.game_id} round={self.current_round} players={len(self.players)} question={json_text}]")
+
         return await asyncio.gather(
             *[self.send_question_and_get_answer(
                 json_text, player) for player in self.players]
@@ -117,26 +135,37 @@ class GameSession:
 
     async def send_question_and_get_answer(self, question_json: str, player: Player) -> str:
         try:
+            # Send the questions
             await player.sendMessage(question_json)
-            return await asyncio.wait_for(player.recvMessage(), timeout=GameSession.ROUND_DURATION)
+            # Give the player the round duration amount of time to answer
+            answer = await asyncio.wait_for(player.recvMessage(), timeout=GameSession.ROUND_DURATION)
+            logging.info(f"Player answered: [player={player} answer={answer}]")
+            return answer
 
         except asyncio.TimeoutError as e:
-            # Expected to occur if player doesn't answer in time
+            logging.info(
+                f"player did not respond within timeout: [player={player} timeout={GameSession.ROUND_DURATION}]")
             pass
 
         except:
             logging.error(
-                "Error occurred while sending and receiving answer", exc_info=True)
+                f"Error occurred while sending and receiving answer: [player={player}]", exc_info=True)
 
         return None
 
     async def broadcast_results(self, allplayers: List[Player], survivors: List[Player], eliminated: List[Player], choice_counts: List[int]):
         json_text = json.dumps(choice_counts)
 
+        logging.info(
+            f"Sending round stats to players: [game_id={self.game_id} round={self.current_round} players={len(self.players)}, result={json_text}]")
+
         # Broadcast the statistics on how many players have chosen each answer.
         await asyncio.gather(
             *[player.sendMessage(json_text) for player in allplayers]
         )
+
+        logging.info(
+            f"Game round survivors: [game_id={self.game_id} round={self.current_round} players={survivors}]")
 
         # Broadcast whether each player has survived or been eliminated from the game.
         coroutines = [player.sendMessage(
@@ -178,6 +207,9 @@ class GameSession:
     def handle_eliminated_players(self, players: List[Player]):
         # Set the result so that the websocket handling can finish.
         for player in players:
+            logging.info(
+                f"Player eliminated from the game: [game_id={self.game_id} round={self.current_round} player={player}]")
+
             player.future.set_result(None)
 
     async def notify_winner_if_one_remaining(self):

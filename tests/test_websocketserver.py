@@ -12,14 +12,14 @@ from hqtrivia.websocketserver import WebsocketServer
 
 class WebsocketServerTest(unittest.TestCase):
 
-    @patch('websockets.serve', new_callable=AsyncMock)
+    @patch('websockets.serve', new_callable=MagicMock)
     def test_start(self, serve):
         """Tests whether start() calls serve() on websockets with correct arguments
         """
 
         wss = WebsocketServer(64823, None)
 
-        asyncio.run(wss.start())
+        wss.start()
 
         serve.assert_called_once_with(wss.ws_handler_impl, port=64823)
 
