@@ -2,7 +2,9 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import call
 from unittest.mock import patch
+from websockets.exceptions import ConnectionClosed
 
 from hqtrivia.gamesession import GameSession
 from hqtrivia.messages import *
@@ -25,12 +27,14 @@ class GameSessionTest(unittest.TestCase):
         """
         game = GameSession(0, [])
         game.abort_game = AsyncMock()
-        game.execute_next_round = AsyncMock(return_value=False)
+        game.execute_next_round = AsyncMock()
+        # First time returns True. On second time returns False.
+        game.execute_next_round.side_effect = [True, False]
 
         asyncio.run(game.run())
 
         game.abort_game.assert_not_called()
-        game.execute_next_round.assert_called_once()
+        game.execute_next_round.assert_has_calls([call(), call()])
 
     def test_run_when_exception_thrown(self):
         """Tests that run() method calls execute_next_round() only once if it returns False.
@@ -133,6 +137,54 @@ class GameSessionTest(unittest.TestCase):
         sendMessage2 = AsyncMock()
         player2.sendMessage = sendMessage2
         player2.recvMessage = over_sleep
+
+        game = GameSession(0, [player1, player2])
+
+        result = asyncio.run(game.execute_next_round())
+
+        self.assertFalse(
+            result, "execute_next_round() should return False since game ended.")
+
+        self.assertEqual(len(game.players), 0,
+                         "No player should remain in the game")
+
+        # Check that the question was sent to the players
+        sendMessage1.assert_any_call(
+            '{"question": "Question 1", "choices": ["A", "B", "C", "D"]}')
+
+        sendMessage2.assert_any_call(
+            '{"question": "Question 1", "choices": ["A", "B", "C", "D"]}')
+
+        # Check that the count of the answers from each participant was sent
+        sendMessage1.assert_any_call('[0, 0, 0, 1]')
+        sendMessage2.assert_any_call('[0, 0, 0, 1]')
+
+        # Check that these message were sent last
+        sendMessage1.assert_called_with(MESSAGE_YOU_ARE_ELIMINATED)
+        sendMessage2.assert_called_with(MESSAGE_YOU_ARE_ELIMINATED)
+
+    @patch('hqtrivia.question.Question.generate', new_callable=AsyncMock)
+    def test_execute_next_round_player_recvMessage_exception(self, generate):
+        """Tests that execute_next_round() eliminates player who did not respond within timeout.
+        """
+        generate.return_value = Question(
+            'Question 1', ['A', 'B', 'C', 'D'], 'C')
+
+        # Create player 1 with wrong answer, and player 2 with the right answer
+        player1 = MagicMock()
+        sendMessage1 = AsyncMock()
+        player1.attach_mock(sendMessage1, 'sendMessage')
+        recvMessage1 = AsyncMock()
+        recvMessage1.return_value = "D"
+        player1.attach_mock(recvMessage1, 'recvMessage')
+
+        player2 = MagicMock()
+        sendMessage2 = AsyncMock()
+        player2.attach_mock(sendMessage2, 'sendMessage')
+        recvMessage2 = AsyncMock(side_effect=Exception(
+            'General Error during recvMessage()'))
+        recvMessage2.return_value = "C"
+        player2.attach_mock(recvMessage2, 'recvMessage')
 
         game = GameSession(0, [player1, player2])
 
@@ -286,3 +338,56 @@ class GameSessionTest(unittest.TestCase):
         # Check that these message were sent last
         sendMessage1.assert_called_once_with(MESSAGE_NETWORK_ERROR_OCCURRED)
         sendMessage2.assert_called_once_with(MESSAGE_NETWORK_ERROR_OCCURRED)
+
+    def test_player_sendMessage(self):
+        """Tests that Player.sendMessage() calls websocket send()
+        """
+        websocket = MagicMock()
+        send = AsyncMock()
+        websocket.attach_mock(send, 'send')
+
+        player = Player(None, websocket)
+        asyncio.run(player.sendMessage("hello"))
+
+        send.assert_called_once_with('hello')
+
+    def test_player_recvMessage(self):
+        """Tests that Player.recvMessage() calls websocket recv()
+        """
+        websocket = MagicMock()
+        recv = AsyncMock()
+        recv.return_value = "test1"
+        websocket.attach_mock(recv, 'recv')
+
+        player = Player(None, websocket)
+        message = asyncio.run(player.recvMessage())
+
+        self.assertEqual(message, 'test1',
+                         "recvMessage() returned unexpected string")
+
+    def test_player_recvMessage_connection_closed(self):
+        """Tests that Player.recvMessage() returns None when websocket throws ConnectionClosed exception
+        """
+        websocket = MagicMock()
+        recv = AsyncMock(side_effect=ConnectionClosed(0, 'Connection Closed'))
+        websocket.attach_mock(recv, 'recv')
+
+        player = Player(None, websocket)
+        message = asyncio.run(player.recvMessage())
+
+        self.assertIsNone(
+            message, 'None expected for recvMessage() when connection is closed')
+
+    def test_player_recvMessage_exception(self):
+        """Tests that Player.recvMessage() throws Exception when websocket throws Exception
+        """
+        websocket = MagicMock()
+        recv = AsyncMock()
+        recv.return_value = "test1"
+        recv.side_effect = Exception("System Error")
+        websocket.attach_mock(recv, 'recv')
+
+        player = Player(None, websocket)
+
+        with self.assertRaises(Exception):
+            asyncio.run(player.recvMessage())

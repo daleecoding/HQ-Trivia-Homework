@@ -4,6 +4,7 @@ import json
 import logging
 from typing import List
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from .messages import *
 from .question import Question
@@ -76,7 +77,7 @@ class GameSession:
               for player in self.players]
         )
 
-        await self.handle_eliminated_players(self.players)
+        self.handle_eliminated_players(self.players)
         self.players.clear()
 
     async def execute_next_round(self) -> bool:
