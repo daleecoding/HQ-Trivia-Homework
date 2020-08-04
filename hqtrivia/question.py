@@ -4,14 +4,13 @@ import json
 import random
 from typing import List
 
+import hqtrivia.config as config
+
 
 class Question:
     """
     Represents 1 multiple question that will be used in a game round.
     """
-
-    HTTP_TIMEOUT = 10
-    QUESTION_GENERATOR_API = 'http://opentdb.com/api.php?amount=1&type=multiple&difficulty=easy'
 
     def __init__(self, question: str, choices: List[str], answer: str):
         self.question = question
@@ -27,10 +26,10 @@ class Question:
     @staticmethod
     async def generate() -> 'Question':
         async with ClientSession() as session:
-            async with session.get(Question.QUESTION_GENERATOR_API) as resp:
+            async with session.get(config.CONFIG_QUESTION_GENERATOR_API) as resp:
                 if (resp.status != 200):
                     raise Exception(
-                        f"Received response {resp.status} from {Question.QUESTION_GENERATOR_API}")
+                        f"Received response {resp.status} from {config.CONFIG_QUESTION_GENERATOR_API}")
 
                 # Convert JSON to our Question and return it
                 text = await resp.text()

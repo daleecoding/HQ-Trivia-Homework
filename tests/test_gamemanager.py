@@ -6,6 +6,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 import websockets
 
+import hqtrivia.config as config
 from hqtrivia.gamemanager import GameManager
 from hqtrivia.player import Player
 
@@ -93,7 +94,7 @@ class GameManagerTest(unittest.TestCase):
         async def my_coroutine():
             gm = GameManager()
 
-            for i in range(0, GameManager.PLAYERS_PER_GAME):
+            for i in range(0, config.CONFIG_PLAYERS_PER_GAME):
                 future = asyncio.get_running_loop().create_future()
                 player = Player(future, None)
                 future.set_result(None)

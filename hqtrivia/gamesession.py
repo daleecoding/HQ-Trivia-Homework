@@ -6,6 +6,7 @@ from typing import List
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+import hqtrivia.config as config
 from .messages import *
 from .player import Player
 from .question import Question
@@ -18,8 +19,6 @@ class GameSession:
     1 player is left.
 
     """
-
-    ROUND_DURATION = 10
 
     def __init__(self, game_id: int, players: List[Player]):
         self.game_id = game_id
@@ -97,13 +96,13 @@ class GameSession:
             # Send the questions
             await player.send_question(question)
             # Give the player the round duration amount of time to answer
-            answer = await asyncio.wait_for(player.recv_answer(), timeout=GameSession.ROUND_DURATION)
+            answer = await asyncio.wait_for(player.recv_answer(), timeout=config.CONFIG_ROUND_DURATION)
             logging.info(f"Player answered: [player={player} answer={answer}]")
             return answer
 
         except asyncio.TimeoutError as e:
             logging.info(
-                f"player did not respond within timeout: [player={player} timeout={GameSession.ROUND_DURATION}]")
+                f"player did not respond within timeout: [player={player} timeout={config.CONFIG_ROUND_DURATION}]")
             pass
 
         except:

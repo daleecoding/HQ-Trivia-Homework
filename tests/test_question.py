@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
+import hqtrivia.config as config
 from hqtrivia.question import Question
 
 
@@ -46,12 +47,12 @@ class QuestionTest(unittest.TestCase):
         """
 
         # Point to a server that always returns 400
-        self.backup_api = Question.QUESTION_GENERATOR_API
-        Question.QUESTION_GENERATOR_API = 'http://httpbin.org/status/400'
+        self.backup_api = config.CONFIG_QUESTION_GENERATOR_API
+        config.CONFIG_QUESTION_GENERATOR_API = 'http://httpbin.org/status/400'
 
         try:
             with self.assertRaises(Exception):
                 asyncio.run(Question.generate())
 
         finally:
-            Question.QUESTION_GENERATOR_API = self.backup_api
+            config.CONFIG_QUESTION_GENERATOR_API = self.backup_api

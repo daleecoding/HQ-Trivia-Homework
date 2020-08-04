@@ -1,0 +1,7 @@
+{
+	"players_per_game": 2,
+	"ws_server_port": 9999,
+	"round_duration": 10,
+	"log_level": 20,
+	"question_generator_api": "http://opentdb.com/api.php?amount=1&type=multiple&difficulty=easy"
+}

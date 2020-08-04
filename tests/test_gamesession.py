@@ -6,6 +6,7 @@ from unittest.mock import call
 from unittest.mock import patch
 from websockets.exceptions import ConnectionClosed
 
+import hqtrivia.config as config
 from hqtrivia.gamesession import GameSession
 from hqtrivia.messages import *
 from hqtrivia.question import Question
@@ -16,11 +17,11 @@ class GameSessionTest(unittest.TestCase):
 
     def setUp(self):
         # Set to a shorter time for faster test
-        self.original_round_duration = GameSession.ROUND_DURATION
-        GameSession.ROUND_DURATION = min(2, GameSession.ROUND_DURATION)
+        self.original_round_duration = config.CONFIG_ROUND_DURATION
+        config.CONFIG_ROUND_DURATION = min(2, config.CONFIG_ROUND_DURATION)
 
     def tearDown(self):
-        GameSession.ROUND_DURATION = self.original_round_duration
+        config.CONFIG_ROUND_DURATION = self.original_round_duration
 
     def get_mocked_player(self, answer):
         """Helper method to get a mocked up player for use
@@ -131,7 +132,7 @@ class GameSessionTest(unittest.TestCase):
          send_answers1, recv_answer1) = self.get_mocked_player('D')
 
         async def over_sleep():
-            await asyncio.sleep(GameSession.ROUND_DURATION+1)
+            await asyncio.sleep(config.CONFIG_ROUND_DURATION+1)
 
         (player2, send_announcement2, send_question2,
          send_answers2, recv_answer2) = self.get_mocked_player(None)
