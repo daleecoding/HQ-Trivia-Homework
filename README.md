@@ -21,14 +21,14 @@ High availability can be achieved through an application load balancer. However,
 ## Design
 The main entry for the package is in gamemanager module.  In GameManager.main(), websocketserver module is started and is blocked on the current event loop until it is stopped. websocketserver module notifies new websocket connections to the GameManager. GameManager maintains the list of players waiting. GameManager adds the new connection to the waiting list. If the waiting list meets the minimum number of players, a GameSession is created and is run using asyncio.await. In GameSession, the following high-level logic is implemented:
 - While two or more players left in the game:
- - Generate a question
- - Send questions to the players
- - Receive an answer with timeout. If timeout, answer is None.
- - Calculate the statistics on how many players have picked each of the choices.
- - Send the answer, statistics, and the result to all players.
- - Eliminate the players who have answered incorrectly. Set the future on the players
-   so that they can be unblocked from the websocketserver callback.
- - Determine winner if there's only one player left. Set the future on the winner as well.
+    - Generate a question
+    - Send questions to the players
+    - Receive an answer with timeout. If timeout, answer is None.
+    - Calculate the statistics on how many players have picked each of the choices.
+    - Send the answer, statistics, and the result to all players.
+    - Eliminate the players who have answered incorrectly. Set the future on the players
+      so that they can be unblocked from the websocketserver callback.
+    - Determine winner if there's only one player left. Set the future on the winner as well.
 
 The message exchange between the GameSession and the client is done via JSON RPC based messages. Player class provides a single point of message exchange with a websocket client. Here's an example of the JSON RPC message exchanges between the server and the client:
 
