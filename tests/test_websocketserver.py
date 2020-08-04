@@ -8,6 +8,7 @@ from unittest.mock import patch
 import websockets
 
 from hqtrivia.websocketserver import WebsocketServer
+from hqtrivia.websocketserver import WebsocketCallbackInterface
 
 
 class WebsocketServerTest(unittest.TestCase):
@@ -37,6 +38,12 @@ class WebsocketServerTest(unittest.TestCase):
         asyncio.run(wss.ws_handler_impl(ws, None))
 
         handle_new_websocket.assert_called_once_with(ws)
+
+        # Sanity check the WebsocketCallbackInterface as well.
+        wsci = WebsocketCallbackInterface()
+        wsci.handle_new_websocket(None)
+        wss = WebsocketServer(64823, wsci)
+        asyncio.run(wss.ws_handler_impl(ws, None))
 
     def test_ws_handler_impl_throws_exception(self):
         """Tests when ws_handler_impl() encounters exception thrown from the callback. It is expected to eat up the exception.

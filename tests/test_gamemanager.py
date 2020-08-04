@@ -7,7 +7,7 @@ from unittest.mock import patch
 import websockets
 
 from hqtrivia.gamemanager import GameManager
-from hqtrivia.gamesession import Player
+from hqtrivia.player import Player
 
 
 class GameManagerTest(unittest.TestCase):
@@ -54,6 +54,7 @@ class GameManagerTest(unittest.TestCase):
             gm = GameManager()
             future = asyncio.get_running_loop().create_future()
             player = Player(future, None)
+            player.send_announcement = AsyncMock()
 
             # Do not set result on purpose so that we know that it's blocking on this.
             # future.set_result(None)
@@ -65,17 +66,22 @@ class GameManagerTest(unittest.TestCase):
             self.assertEqual(len(gm.waiting_players), 1,
                              "Number of waiting players must be 1")
 
+            player.send_announcement.assert_called_once()
+
             gm.waiting_players.clear()
 
             # Now let's see if it's not blocked.
             future = asyncio.get_running_loop().create_future()
             player = Player(future, None)
             future.set_result(None)
+            player.send_announcement = AsyncMock()
 
             await asyncio.wait_for(gm.wait_until_game_complete(player), timeout=1)
 
             self.assertEqual(len(gm.waiting_players), 1,
                              "Number of waiting players must be 1")
+
+            player.send_announcement.assert_called_once()
 
         asyncio.run(my_coroutine())
 
@@ -91,6 +97,7 @@ class GameManagerTest(unittest.TestCase):
                 future = asyncio.get_running_loop().create_future()
                 player = Player(future, None)
                 future.set_result(None)
+                player.send_announcement = AsyncMock()
 
                 await asyncio.wait_for(gm.wait_until_game_complete(player), timeout=1)
 

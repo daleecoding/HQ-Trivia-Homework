@@ -3,7 +3,8 @@ import logging
 import websockets
 
 from .gamesession import GameSession
-from .gamesession import Player
+from .messages import *
+from .player import Player
 from .websocketserver import WebsocketServer
 from .websocketserver import WebsocketCallbackInterface
 
@@ -53,6 +54,7 @@ class GameManager(WebsocketCallbackInterface):
         else:
             logging.info(
                 f"Waiting for more players: [players={len(self.waiting_players)} min_required={GameManager.PLAYERS_PER_GAME}]")
+            await player.send_announcement(TEMPLATE_WAITING_FOR_PLAYERS.substitute(players=GameManager.PLAYERS_PER_GAME))
 
         # Wait until the game is complete for this player
         await player.future

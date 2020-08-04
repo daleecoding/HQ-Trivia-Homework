@@ -11,17 +11,18 @@ class Question:
     """
 
     HTTP_TIMEOUT = 10
-    QUESTION_GENERATOR_API = 'http://opentdb.com/api.php?amount=1&type=multiple'
+    QUESTION_GENERATOR_API = 'http://opentdb.com/api.php?amount=1&type=multiple&difficulty=easy'
 
     def __init__(self, question: str, choices: List[str], answer: str):
         self.question = question
         self.choices = choices
         self.answer = answer
 
-    def get_json_without_answer(self) -> str:
-        my_dict = self.__dict__.copy()
-        del my_dict['answer']
-        return json.dumps(my_dict)
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        return str(self.__dict__)
 
     @staticmethod
     async def generate() -> 'Question':

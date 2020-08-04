@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import logging
 import unittest
 from unittest.mock import AsyncMock
 from unittest.mock import patch
@@ -21,6 +22,8 @@ class QuestionTest(unittest.TestCase):
 
         question = asyncio.run(Question.generate())
 
+        string = "Question is " + str([question])
+
         self.assertGreater(len(question.choices), 1,
                            "Choices returned must be greater than 1")
 
@@ -37,16 +40,6 @@ class QuestionTest(unittest.TestCase):
                 count += 1
 
         self.assertEqual(count, 1, "Only one choice must be an answer")
-
-    @patch('hqtrivia.question.Question.generate', new_callable=AsyncMock)
-    def test_get_json_without_answer(self, generate):
-        """Test the Question to JSON conversion
-        """
-        generate.return_value = Question(
-            'Question 1', ['A', 'B', 'C', 'D'], 'C')
-
-        question = asyncio.run(Question.generate())
-        json_text = question.get_json_without_answer()
 
     def test_question_when_http_request_gets_400(self):
         """Test when the HTTP GET returns 400 from the Trivia server

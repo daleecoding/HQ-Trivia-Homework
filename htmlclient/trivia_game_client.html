@@ -1,62 +1,120 @@
 <!-- Initial version taken from https://www.tutorialspoint.com/websockets/websockets_send_receive_messages.htm -->
 <!DOCTYPE html>
 <html>
-   <meta charset = "utf-8" />
-   <title>Websocket Test</title>
+<meta charset="utf-8" />
+<title>Trivia Game</title>
 
-   <script language = "javascript" type = "text/javascript">
-      var wsUri = "ws://localhost:9999";
-      var output;
-		
-      function init() {
-         output = document.getElementById("output");
-         testWebSocket();
+<script language="javascript" type="text/javascript">
+   var wsUri = "ws://localhost:9999";
+   var output;
+   var currentForm = null
+
+   function init() {
+      output = document.getElementById("output");
+      handleWebsocket();
+   }
+
+   function handleWebsocket() {
+      websocket = new WebSocket(wsUri);
+
+      websocket.onopen = function (evt) {
+         onOpen(evt)
+      };
+
+      websocket.onmessage = function (evt) {
+         onMessage(evt)
+      };
+
+      websocket.onerror = function (evt) {
+         onError(evt)
+      };
+   }
+
+   function onOpen(evt) {
+      writeToScreen("Connected to the game server");
+   }
+
+   function onMessage(evt) {
+      var request = JSON.parse(evt.data);
+      console.log('>> ' + evt.data)
+
+      switch (request.method) {
+         case "ask_question":
+            writeQuestion(request.params)
+            break;
+         case "answers":
+            writeAnswers(request.params)
+            break;
+         case "announcement":
+            writeToScreen('<span style = "color: blue;">' + request.params.message + '</span>')
+            break;
       }
-		
-      function testWebSocket() {
-         websocket = new WebSocket(wsUri);
-			
-         websocket.onopen = function(evt) {
-            onOpen(evt)
-         };
-		
-         websocket.onmessage = function(evt) {
-            onMessage(evt)
-         };
-		
-         websocket.onerror = function(evt) {
-            onError(evt)
-         };
-      }
-		
-      function onOpen(evt) {
-         writeToScreen("CONNECTED");
-      }
-		
-      function onMessage(evt) {
-         writeToScreen('<span style = "color: blue;">RESPONSE: ' +
-            evt.data+'</span>');
+   }
+
+   function onError(evt) {
+      writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+   }
+
+   function doSend(message) {
+      console.log('<< ' + message)
+      websocket.send(message);
+   }
+
+   function writeToScreen(message) {
+      var pre = document.createElement("p");
+      pre.style.wordWrap = "break-word";
+      pre.innerHTML = message;
+      output.appendChild(pre);
+   }
+
+   function sendAnswer(form) {
+      // Disable the button first
+      var buttons = form.elements['submit'];
+      for (var i = 0, len = buttons.length; i < len; i++) {
+         buttons[i].value = 'Submitted'
+         console.log("Button Disabled " + buttons[i].value)
       }
 
-      function onError(evt) {
-         writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+      var val;
+      var radios = form.elements['answer'];
+
+      for (var i = 0, len = radios.length; i < len; i++) {
+         if (radios[i].checked) {
+            val = radios[i].value;
+            break;
+         }
       }
-		
-      function doSend(message) {
-         writeToScreen("SENT: " + message); websocket.send(message);
+      var obj = { result: val, error: null, id: 0 };
+      doSend(JSON.stringify(obj));
+   }
+
+   function writeQuestion(params) {
+      var html = "<form action=\"#\" method=\"get\" class=\"questionForm\" id=\"questionForm\">";
+      html += "<h2>" + params.question + "</h2>";
+
+      for (var i = 0; i < params.choices.length; ++i) {
+         html += `<input type=\"radio\" name=\"answer\" value=\"${params.choices[i]}\">${params.choices[i]}<br>`
       }
-		
-      function writeToScreen(message) {
-         var pre = document.createElement("p"); 
-         pre.style.wordWrap = "break-word"; 
-         pre.innerHTML = message; output.appendChild(pre);
+      html += "<p><input type=\"button\" name=\"submit\" onClick=\"sendAnswer(this.form)\" value=\"Submit Answer\"></p>";
+      html += "</form>";
+      writeToScreen(html);
+   }
+
+   function writeAnswers(params) {
+      var html = '<h2>Correct answer was ' + params.question.answer + '</h2>'
+      for (var i = 0; i < params.question.choices.length; ++i) {
+         html += `${params.question.choices[i]}:
+         ${params.choice_counts[i]} players selected<br>`
       }
-		
-      window.addEventListener("load", init, false);
-		
-   </script>
-	
-   <h2>WebSocket Test</h2>
-   <div id = "output"></div> 
-	
+
+      writeToScreen(html);
+   }
+
+   window.addEventListener("load", init, false);
+
+</script>
+
+<h2>Trivia Game</h2>
+<div id="output"></div>
+
 </html>
