@@ -1,7 +1,10 @@
 import json
 import logging
 
-# Configuration variables with default values assigned
+"""
+Serves as the global configuration for the hqtrivia package.
+"""
+
 CONFIG_LOG_LEVEL = logging.INFO
 CONFIG_PLAYERS_PER_GAME = 2
 CONFIG_WS_SERVER_PORT = 9999
@@ -10,6 +13,13 @@ CONFIG_QUESTION_GENERATOR_API = 'http://opentdb.com/api.php?amount=1&type=multip
 
 
 def load_config(config_file: str):
+    """Loads JSON config file into the global variables in this module.
+
+    Parameters
+    ----------
+    config_file: str
+        Configuration file path
+    """
     global CONFIG_LOG_LEVEL
     global CONFIG_PLAYERS_PER_GAME
     global CONFIG_WS_SERVER_PORT

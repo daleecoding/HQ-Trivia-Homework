@@ -2,6 +2,10 @@ import asyncio
 import logging
 import websockets
 
+"""
+Abstracts the websocketserver logic
+"""
+
 
 class WebsocketCallbackInterface:
     """

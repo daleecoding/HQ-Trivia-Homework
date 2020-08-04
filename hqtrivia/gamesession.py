@@ -11,13 +11,31 @@ from .messages import *
 from .player import Player
 from .question import Question
 
+"""
+Runs a single game session and manages the message exchanges with the players in the game.
+"""
+
 
 class GameSession:
     """
     Represents a single game consisting of multiple players.
     The game will continue until everyone is eliminated or only
-    1 player is left.
+    1 player is left.  run() method is executed by GameManager
+    through await.
 
+    The following high-level logic is implemented:
+
+    While two or more players left in the game:
+        - Generate a question
+        - Send questions to the players
+        - Receive an answer with timeout. If timeout, answer is None.
+        - Calculate the statistics on how many players have picked each of the choices.
+        - Send the answer, statistics, and the result to all players.
+        - Eliminate the players who have answered incorrectly. Set the future on the players
+          so that they can be unblocked from the websocketserver callback.
+        - Determine winner if there's only one player left. Set the future on the winner as well.
+
+    Please see the Player documentation for the message sequence between the server and client.
     """
 
     def __init__(self, game_id: int, players: List[Player]):
@@ -26,6 +44,10 @@ class GameSession:
         self.current_round = 0
 
     async def run(self):
+        """Drives the main logic of 1 game session instance by repeatedly calling
+        execute_next_round() until a winner is declared or everyone is eliminated.
+        """
+
         logging.info(
             f"Game has started: [game_id={self.game_id}, players={str(self.players)}]")
 
@@ -53,7 +75,7 @@ class GameSession:
 
     async def execute_next_round(self) -> bool:
         """
-        Returns false if game is over.
+        Returns false if the game is over.
         """
         self.current_round += 1
 
@@ -81,6 +103,19 @@ class GameSession:
         return await self.notify_winner_if_one_remaining()
 
     async def broadcast_question_and_wait_for_answers(self, question: Question) -> List[str]:
+        """Sends the question to all players and waits for the
+        answers from each players with a configured timeout.
+
+        Parameters
+        ----------
+        question: Question
+            Question to send to the players
+
+        Returns
+        -------
+        Returns a list of answers from each of the players, in the same order as the self.players.
+        """
+
         logging.info(
             f"Sending questions players: [game_id={self.game_id} round={self.current_round} players={len(self.players)} question={str(question)}]")
 
@@ -90,6 +125,20 @@ class GameSession:
         )
 
     async def send_question_and_get_answer(self, question: str, player: Player) -> str:
+        """Sends the question to one player and receives the answer with a configured timeout.
+
+        Parameters
+        ----------
+        question: Question
+            Question to send to the players
+        player: Player
+            Player to send the question and receive the answer from
+
+        Returns
+        -------
+        Returns the answer provided by the player. None is returned if player did not provide
+        an answer within the timeout.
+        """
         try:
             # Announce that the round is starting
             await player.send_announcement(TEMPLATE_GAME_ROUND_STARTING.substitute(round=self.current_round))
@@ -112,6 +161,23 @@ class GameSession:
         return None
 
     async def broadcast_results(self, allplayers: List[Player], survivors: List[Player], eliminated: List[Player], question: Question, choice_counts: List[int]):
+        """Sends the answer statistics and the result to all players.  The statistics is the number of players who picked
+        each of the answers.  The result is whether they have correctly chosen the answer or not.
+
+        Parameters
+        ----------
+        allplayers: List[Player]
+            All players to send to
+        survivors: List[Player]
+            All players who correctly answered
+        eliminated: List[Player]
+            All players who incorectly answered
+        question: Question
+            Question that was sent
+        choice_counts: List[int]
+            Number of players who picked each of the choices
+        """
+
         logging.info(
             f"Sending round stats to players: [game_id={self.game_id} round={self.current_round} players={len(self.players)}, counts={choice_counts}]")
 
@@ -132,6 +198,20 @@ class GameSession:
         await asyncio.gather(*coroutines)
 
     async def broadcast_results_and_eliminate_players(self, question: Question, answers: List[str]) -> List[Player]:
+        """Sends the results and returns the players who have been eliminated from the game.
+
+        Parameters
+        ----------
+        question: Question
+            Question that was sent
+        answers: List[str]
+            Answers provided each of the players
+
+        Returns
+        -------
+        Returns a list of players who were eliminated
+        """
+
         counter = Counter()
         eliminated = []
         survivors = []
@@ -148,6 +228,7 @@ class GameSession:
 
         choice_counts = [0] * len(question.choices)
 
+        # Convert the counter into the ordered array of counts
         for i in range(0, len(question.choices)):
             choice_counts[i] = counter[question.choices[i]]
 
@@ -161,6 +242,15 @@ class GameSession:
         return eliminated
 
     def handle_eliminated_players(self, players: List[Player]):
+        """Handles players who are determined to be eliminated by setting future
+           objects so that the websocket connections blocked in GameManager.wait_until_game_complete()
+           can return from the websocketserver callback and terminate the connection.
+
+        Parameters
+        ----------
+        players: List[Player]
+            Players to be notified of elimination
+        """
         # Set the result so that the websocket handling can finish.
         for player in players:
             logging.info(
@@ -169,6 +259,14 @@ class GameSession:
             player.future.set_result(None)
 
     async def notify_winner_if_one_remaining(self):
+        """If there is a single player remaining, notify to the player that they have won and
+           set the future object so that the winner's websocket connection callback can
+           unblock and go on to terminate.  Winner is eliminated from the game.
+
+        Returns
+        -------
+        True if there are still players remaining. False otherwise.
+        """
         # Check if there's a winner
         if (len(self.players) == 1):
             await self.players[0].send_announcement(MESSAGE_YOU_ARE_THE_WINNER)

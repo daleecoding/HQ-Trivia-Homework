@@ -1,6 +1,10 @@
 import json
 from string import Template
 
+"""
+Declares the fixed messages or templates to be used in hqtrivia package.
+"""
+
 TEMPLATE_GAME_SESSION_ERROR = Template(
     'Error encountered in game session $gameid. Aborting game.')
 TEMPLATE_WAITING_FOR_PLAYERS = Template(

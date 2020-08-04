@@ -6,6 +6,10 @@ from typing import List
 
 import hqtrivia.config as config
 
+"""
+Abstracts the multiple question to be used in the trivia game.
+"""
+
 
 class Question:
     """
@@ -25,6 +29,13 @@ class Question:
 
     @staticmethod
     async def generate() -> 'Question':
+        """Generates a new question by calling a RESTful API on an open trivia internet server.
+
+        Returns
+        -------
+        Returns the new question if successful.  If error was encountered or response is not 200 OK,
+        an exception will be thrown.
+        """
         async with ClientSession() as session:
             async with session.get(config.CONFIG_QUESTION_GENERATOR_API) as resp:
                 if (resp.status != 200):
@@ -37,7 +48,7 @@ class Question:
 
 
 def opentdb_json_to_question(json_text: str) -> Question:
-    """A quick "hack" for converting opentdb json result to our Question instance
+    """A quick "hack" for converting opentdb json result to our Question instance.
 
     Example JSON from opentdb.com:
 
